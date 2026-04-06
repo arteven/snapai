@@ -53,9 +53,9 @@ export default class VariantCommand extends Command {
     }),
     quality: Flags.string({
       char: "q",
-      description: "Image quality: low, medium, high",
-      default: "high",
-      options: ["low", "medium", "high"],
+      description: "Image quality: auto, low, medium, high",
+      default: "auto",
+      options: ["auto", "low", "medium", "high"],
     }),
     zone: Flags.integer({
       char: "z",
@@ -185,7 +185,7 @@ export default class VariantCommand extends Command {
         mask: maskFile,
         prompt: flags.prompt,
         size: "1024x1024",
-        quality: flags.quality as "low" | "medium" | "high",
+        quality: flags.quality as "auto" | "low" | "medium" | "high",
         n: 1,
       });
 
