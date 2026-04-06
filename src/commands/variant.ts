@@ -46,6 +46,12 @@ export default class VariantCommand extends Command {
       description:
         "OpenAI API key override (does not persist to disk). Also supports SNAPAI_API_KEY / OPENAI_API_KEY",
     }),
+    model: Flags.string({
+      char: "m",
+      description: "Model to use for image editing",
+      default: "gpt-image-1.5",
+      options: ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-2"],
+    }),
     quality: Flags.string({
       char: "q",
       description: "Image quality: auto, low, medium, high",
@@ -135,6 +141,7 @@ export default class VariantCommand extends Command {
             `Zone: ${flags.zone}% (~${Math.round((1024 * flags.zone) / 100)}px)`
           )
         );
+        this.log(chalk.gray(`Model: ${flags.model}`));
         this.log(chalk.gray(`Quality: ${flags.quality}`));
         this.log(chalk.gray(`Prompt: ${flags.prompt}`));
         this.log(chalk.gray(`Output directory: ${flags.output}`));
@@ -146,6 +153,7 @@ export default class VariantCommand extends Command {
       this.log(chalk.gray(`Base: ${flags.base}`));
       this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
       this.log(chalk.gray(`Zone: ${flags.zone}%`));
+      this.log(chalk.gray(`Model: ${flags.model}`));
       this.log(chalk.gray(`Quality: ${flags.quality}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
@@ -175,7 +183,7 @@ export default class VariantCommand extends Command {
       });
 
       const response = await client.images.edit({
-        model: "gpt-image-1.5",
+        model: flags.model,
         image: imageFile,
         mask: maskFile,
         prompt: flags.prompt,
