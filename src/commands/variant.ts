@@ -53,6 +53,13 @@ export default class VariantCommand extends Command {
       default: "dall-e-2",
       options: ["dall-e-2", "gpt-image-1"],
     }),
+    zone: Flags.integer({
+      char: "z",
+      description: "Editable zone size as % of canvas (1–100, default 30)",
+      default: 30,
+      min: 1,
+      max: 100,
+    }),
     "prompt-only": Flags.boolean({
       description:
         "Preview the final prompt and positions without generating images",
@@ -124,6 +131,8 @@ export default class VariantCommand extends Command {
         this.log("");
         this.log(chalk.gray(`Base: ${flags.base}`));
         this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
+        this.log(chalk.gray(`Zone: ${flags.zone}% (~${Math.round(1024 * flags.zone / 100)}px)`));
+        this.log(chalk.gray(`Model: ${flags.model}`));
         this.log(chalk.gray(`Prompt: ${flags.prompt}`));
         this.log(chalk.gray(`Output directory: ${flags.output}`));
         return;
@@ -133,6 +142,8 @@ export default class VariantCommand extends Command {
       this.log("");
       this.log(chalk.gray(`Base: ${flags.base}`));
       this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
+      this.log(chalk.gray(`Zone: ${flags.zone}%`));
+      this.log(chalk.gray(`Model: ${flags.model}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
       // Normalize base image to 1024×1024 RGBA PNG
@@ -145,7 +156,7 @@ export default class VariantCommand extends Command {
 
       // Generate mask
       this.log(chalk.gray("Generating mask..."));
-      const maskBuffer = await generateMask(positions);
+      const maskBuffer = await generateMask(positions, flags.zone);
 
       // Call OpenAI image edit
       this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
@@ -158,12 +169,8 @@ export default class VariantCommand extends Command {
         type: "image/png",
       });
 
-      // dall-e-2 is used here because it performs strict inpainting:
-      // only the transparent (alpha=0) zone in the mask is touched;
-      // all opaque pixels are preserved exactly. gpt-image-1 treats
-      // the mask as soft guidance and may regenerate the full image.
       const response = await client.images.edit({
-        model: "dall-e-2",
+        model: flags.model,
         image: imageFile,
         mask: maskFile,
         prompt: flags.prompt,
