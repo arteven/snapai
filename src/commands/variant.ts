@@ -46,6 +46,13 @@ export default class VariantCommand extends Command {
       description:
         "OpenAI API key override (does not persist to disk). Also supports SNAPAI_API_KEY / OPENAI_API_KEY",
     }),
+    model: Flags.string({
+      char: "m",
+      description:
+        'Edit model: "dall-e-2" (strict inpainting, default) or "gpt-image-1" (soft guidance, may modify outside zone)',
+      default: "dall-e-2",
+      options: ["dall-e-2", "gpt-image-1"],
+    }),
     "prompt-only": Flags.boolean({
       description:
         "Preview the final prompt and positions without generating images",
