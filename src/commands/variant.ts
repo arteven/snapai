@@ -3,7 +3,7 @@ import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import sharp from "sharp";
-import OpenAI, { toFile } from "openai";
+import OpenAI from "openai";
 import { ConfigService } from "../services/config.js";
 import { ValidationService } from "../utils/validation.js";
 import { getZoneRects, VALID_POSITIONS, Position } from "../utils/mask.js";
@@ -145,18 +145,13 @@ export default class VariantCommand extends Command {
         .png()
         .toBuffer();
 
-      // Call OpenAI image edit (gpt-image-1 accepts the endpoint but doesn't
-      // do strict inpainting — zone enforcement is applied locally via sharp)
-      this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
+      // gpt-image-1.5 is not supported by /images/edits; use /images/generate
+      // instead. Zone enforcement is applied locally via sharp compositing.
+      this.log(chalk.gray("Calling OpenAI image generate endpoint..."));
       const client = await this.getClient(apiKeyOverride);
 
-      const imageFile = await toFile(imageBuffer, "image.png", {
-        type: "image/png",
-      });
-
-      const response = await client.images.edit({
-        model: "gpt-image-1",
-        image: imageFile,
+      const response = await client.images.generate({
+        model: "gpt-image-1.5",
         prompt: flags.prompt,
         size: "1024x1024",
         n: 1,
