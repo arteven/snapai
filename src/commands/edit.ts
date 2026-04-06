@@ -31,7 +31,7 @@ function parseZoneSpecs(raw: string[]): ZoneSpec[] {
   return specs;
 }
 
-export default class VariantCommand extends Command {
+export default class EditCommand extends Command {
   static description =
     "Edit an existing icon with AI. Optionally restrict edits to specific zones (e.g. t30, tl15br15).";
 
@@ -106,7 +106,7 @@ export default class VariantCommand extends Command {
   }
 
   public async run(): Promise<void> {
-    const { flags } = await this.parse(VariantCommand);
+    const { flags } = await this.parse(EditCommand);
 
     try {
       const promptError = ValidationService.validatePrompt(flags.prompt);
@@ -192,7 +192,7 @@ export default class VariantCommand extends Command {
 
       await fs.ensureDir(flags.output);
       const timestamp = Date.now();
-      const filename = `variant_${zoneLabel}_${timestamp}.png`;
+      const filename = `edit_${zoneLabel}_${timestamp}.png`;
       const outputPath = path.join(flags.output, filename);
       await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
 
