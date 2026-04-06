@@ -6,17 +6,41 @@ import sharp from "sharp";
 import OpenAI, { toFile } from "openai";
 import { ConfigService } from "../services/config.js";
 import { ValidationService } from "../utils/validation.js";
-import { generateMask, VALID_POSITIONS, Position } from "../utils/mask.js";
+import { generateMask, ZoneSpec, Position } from "../utils/mask.js";
+
+// Matches position token followed immediately by a percentage, e.g. t30, tl15, br50
+const ZONE_RE = /(tl|tr|bl|br|t|b|l|r|c)(\d+)/gi;
+
+function parseZoneSpecs(raw: string[]): ZoneSpec[] {
+  const input = raw.join(" ");
+  const specs: ZoneSpec[] = [];
+  const regex = new RegExp(ZONE_RE.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(input)) !== null) {
+    specs.push({
+      pos: match[1].toLowerCase() as Position,
+      percent: Math.max(1, Math.min(100, parseInt(match[2], 10))),
+    });
+  }
+  const leftover = input.replace(new RegExp(ZONE_RE.source, "gi"), "").replace(/\s+/g, "");
+  if (leftover) {
+    throw new Error(
+      `Unrecognized zone token(s): "${leftover}". Format: <position><percent>, e.g. t30, tl15, br50`
+    );
+  }
+  return specs;
+}
 
 export default class VariantCommand extends Command {
   static description =
-    "Add something to a specific region of an existing icon using OpenAI image editing";
+    "Edit an existing icon with AI. Optionally restrict edits to specific zones (e.g. t30, tl15br15).";
 
   static examples = [
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --position tl --prompt "add a red notification badge"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --position "tl tr" --prompt "add sparkles in corners"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --position tl,tr --prompt "add stars" --output ./out',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --position c --prompt "add a play button" --prompt-only',
+    '<%= config.bin %> <%= command.id %> --base ./icon.png --prompt "make it look futuristic"',
+    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone t30 --prompt "add a red notification badge"',
+    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone t30r10 --prompt "add sparkles in corners"',
+    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone tl15 --zone br15 --prompt "add stars in both corners"',
+    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone c40 --prompt "add a play button" --prompt-only',
   ];
 
   static flags = {
@@ -25,15 +49,15 @@ export default class VariantCommand extends Command {
       description: "Path to the base icon PNG",
       required: true,
     }),
-    position: Flags.string({
-      char: "P",
-      description: `One or more position tokens (space/comma separated). Valid: ${VALID_POSITIONS.join(", ")}`,
-      required: true,
+    zone: Flags.string({
+      char: "z",
+      description:
+        "Zone(s) to edit: <position><percent>, e.g. t30 (top 30%), t30r10 (top 30% + right 10%). Omit for whole-image edit. Positions: tl tr bl br t b l r c",
       multiple: true,
     }),
     prompt: Flags.string({
       char: "p",
-      description: "What to add to the specified region",
+      description: "What to edit or add",
       required: true,
     }),
     output: Flags.string({
@@ -58,39 +82,12 @@ export default class VariantCommand extends Command {
       default: "auto",
       options: ["auto", "low", "medium", "high"],
     }),
-    zone: Flags.integer({
-      char: "z",
-      description: "Editable zone size as % of canvas (1–100, default 30)",
-      default: 30,
-      min: 1,
-      max: 100,
-    }),
     "prompt-only": Flags.boolean({
       description:
-        "Preview the final prompt and positions without generating images",
+        "Preview the configuration without generating images",
       default: false,
     }),
   };
-
-  private parsePositions(raw: string[]): Position[] {
-    const tokens = raw
-      .flatMap((v) => v.split(/[\s,]+/))
-      .map((v) => v.trim().toLowerCase())
-      .filter(Boolean);
-
-    const invalid = tokens.filter(
-      (t) => !VALID_POSITIONS.includes(t as Position)
-    );
-    if (invalid.length > 0) {
-      this.error(
-        chalk.red(
-          `Invalid position(s): ${invalid.join(", ")}. Valid: ${VALID_POSITIONS.join(", ")}`
-        )
-      );
-    }
-
-    return [...new Set(tokens)] as Position[];
-  }
 
   private async getClient(apiKeyOverride?: string): Promise<OpenAI> {
     const apiKey =
@@ -112,7 +109,6 @@ export default class VariantCommand extends Command {
     const { flags } = await this.parse(VariantCommand);
 
     try {
-      // Validate inputs
       const promptError = ValidationService.validatePrompt(flags.prompt);
       if (promptError) this.error(promptError);
 
@@ -123,24 +119,22 @@ export default class VariantCommand extends Command {
         this.error(chalk.red(`Base image not found: ${flags.base}`));
       }
 
-      const positions = this.parsePositions(flags.position);
-
       const apiKeyOverride = flags["openai-api-key"];
       if (apiKeyOverride) {
         const keyError = ValidationService.validateApiKey(apiKeyOverride);
         if (keyError) this.error(chalk.red(keyError));
       }
 
+      const zones: ZoneSpec[] = flags.zone ? parseZoneSpecs(flags.zone) : [];
+      const zoneLabel = zones.length
+        ? zones.map((z) => `${z.pos}${z.percent}`).join("")
+        : "whole";
+
       if (flags["prompt-only"]) {
         this.log(chalk.blue("🔎 Prompt preview (no generation)"));
         this.log("");
         this.log(chalk.gray(`Base: ${flags.base}`));
-        this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
-        this.log(
-          chalk.gray(
-            `Zone: ${flags.zone}% (~${Math.round((1024 * flags.zone) / 100)}px)`
-          )
-        );
+        this.log(chalk.gray(`Zone(s): ${zones.length ? zoneLabel : "whole image (no mask)"}`));
         this.log(chalk.gray(`Model: ${flags.model}`));
         this.log(chalk.gray(`Quality: ${flags.quality}`));
         this.log(chalk.gray(`Prompt: ${flags.prompt}`));
@@ -151,13 +145,11 @@ export default class VariantCommand extends Command {
       this.log(chalk.blue("🎨 Generating icon variant..."));
       this.log("");
       this.log(chalk.gray(`Base: ${flags.base}`));
-      this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
-      this.log(chalk.gray(`Zone: ${flags.zone}%`));
+      this.log(chalk.gray(`Zone(s): ${zones.length ? zoneLabel : "whole image (no mask)"}`));
       this.log(chalk.gray(`Model: ${flags.model}`));
       this.log(chalk.gray(`Quality: ${flags.quality}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
-      // Normalize base image to 1024×1024 RGBA PNG
       this.log(chalk.gray("Normalizing base image to 1024×1024 RGBA..."));
       const imageBuffer = await sharp(flags.base)
         .resize(1024, 1024)
@@ -165,27 +157,24 @@ export default class VariantCommand extends Command {
         .png()
         .toBuffer();
 
-      // Generate mask (semantic guidance for the model; sharp enforces the
-      // strict zone boundary via compositing after the API call)
-      this.log(chalk.gray("Generating mask..."));
-      const maskBuffer = await generateMask(positions, flags.zone);
-
-      // gpt-image-1.5 supports /images/edits with mask for semantic guidance.
-      // GPT image models always return b64_json — response_format not needed.
-      this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
-      const client = await this.getClient(apiKeyOverride);
-
       const imageFile = await toFile(imageBuffer, "image.png", {
         type: "image/png",
       });
-      const maskFile = await toFile(maskBuffer, "mask.png", {
-        type: "image/png",
-      });
+
+      let maskFile: Awaited<ReturnType<typeof toFile>> | undefined;
+      if (zones.length) {
+        this.log(chalk.gray("Generating mask..."));
+        const maskBuffer = await generateMask(zones);
+        maskFile = await toFile(maskBuffer, "mask.png", { type: "image/png" });
+      }
+
+      this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
+      const client = await this.getClient(apiKeyOverride);
 
       const response = await client.images.edit({
         model: flags.model,
         image: imageFile,
-        mask: maskFile,
+        ...(maskFile ? { mask: maskFile } : {}),
         prompt: flags.prompt,
         size: "1024x1024",
         quality: flags.quality as "auto" | "low" | "medium" | "high",
@@ -201,11 +190,9 @@ export default class VariantCommand extends Command {
         throw new Error("No base64 data returned from OpenAI");
       }
 
-      // Save output
       await fs.ensureDir(flags.output);
-      const posLabel = positions.join("_");
       const timestamp = Date.now();
-      const filename = `variant_${posLabel}_${timestamp}.png`;
+      const filename = `variant_${zoneLabel}_${timestamp}.png`;
       const outputPath = path.join(flags.output, filename);
       await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
 

@@ -13,6 +13,11 @@ export const VALID_POSITIONS = [
 ] as const;
 export type Position = (typeof VALID_POSITIONS)[number];
 
+export interface ZoneSpec {
+  pos: Position;
+  percent: number; // 1–100
+}
+
 const SIZE = 1024;
 
 function zoneRect(
@@ -43,39 +48,18 @@ function zoneRect(
 }
 
 /**
- * Returns the zone rectangles for given positions and zone percentage.
- * Useful for compositing operations that need to know which pixel regions to copy.
- */
-export function getZoneRects(
-  positions: Position[],
-  zonePercent = 30
-): Array<{ x: number; y: number; w: number; h: number }> {
-  const zone = Math.round(SIZE * Math.max(1, Math.min(100, zonePercent)) / 100);
-  return positions.map((pos) => zoneRect(pos, zone));
-}
-
-/**
  * Generates a 1024×1024 RGBA PNG mask.
  * Transparent pixels (alpha=0) mark editable zones.
  * Black opaque pixels (alpha=255) mark preserved areas.
- *
- * @param positions - which regions to mark as editable
- * @param zonePercent - size of each zone as % of canvas (1–100, default 30)
  */
-export async function generateMask(
-  positions: Position[],
-  zonePercent = 30
-): Promise<Buffer> {
-  const zone = Math.round(SIZE * Math.max(1, Math.min(100, zonePercent)) / 100);
-
-  // Start with all-black opaque (preserved)
+export async function generateMask(zones: ZoneSpec[]): Promise<Buffer> {
   const pixels = Buffer.alloc(SIZE * SIZE * 4, 0);
   for (let i = 0; i < SIZE * SIZE; i++) {
     pixels[i * 4 + 3] = 255;
   }
 
-  // Make each specified zone transparent (editable)
-  for (const pos of positions) {
+  for (const { pos, percent } of zones) {
+    const zone = Math.round(SIZE * Math.max(1, Math.min(100, percent)) / 100);
     const { x, y, w, h } = zoneRect(pos, zone);
     for (let row = y; row < y + h; row++) {
       for (let col = x; col < x + w; col++) {
