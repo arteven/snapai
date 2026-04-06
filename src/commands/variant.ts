@@ -3,10 +3,15 @@ import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import sharp from "sharp";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { ConfigService } from "../services/config.js";
 import { ValidationService } from "../utils/validation.js";
-import { getZoneRects, VALID_POSITIONS, Position } from "../utils/mask.js";
+import {
+  generateMask,
+  getZoneRects,
+  VALID_POSITIONS,
+  Position,
+} from "../utils/mask.js";
 
 export default class VariantCommand extends Command {
   static description =
@@ -45,6 +50,12 @@ export default class VariantCommand extends Command {
       char: "k",
       description:
         "OpenAI API key override (does not persist to disk). Also supports SNAPAI_API_KEY / OPENAI_API_KEY",
+    }),
+    quality: Flags.string({
+      char: "q",
+      description: "Image quality: low, medium, high",
+      default: "high",
+      options: ["low", "medium", "high"],
     }),
     zone: Flags.integer({
       char: "z",
@@ -124,7 +135,12 @@ export default class VariantCommand extends Command {
         this.log("");
         this.log(chalk.gray(`Base: ${flags.base}`));
         this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
-        this.log(chalk.gray(`Zone: ${flags.zone}% (~${Math.round(1024 * flags.zone / 100)}px)`));
+        this.log(
+          chalk.gray(
+            `Zone: ${flags.zone}% (~${Math.round((1024 * flags.zone) / 100)}px)`
+          )
+        );
+        this.log(chalk.gray(`Quality: ${flags.quality}`));
         this.log(chalk.gray(`Prompt: ${flags.prompt}`));
         this.log(chalk.gray(`Output directory: ${flags.output}`));
         return;
@@ -135,6 +151,7 @@ export default class VariantCommand extends Command {
       this.log(chalk.gray(`Base: ${flags.base}`));
       this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
       this.log(chalk.gray(`Zone: ${flags.zone}%`));
+      this.log(chalk.gray(`Quality: ${flags.quality}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
       // Normalize base image to 1024×1024 RGBA PNG
@@ -145,15 +162,30 @@ export default class VariantCommand extends Command {
         .png()
         .toBuffer();
 
-      // gpt-image-1.5 is not supported by /images/edits; use /images/generate
-      // instead. Zone enforcement is applied locally via sharp compositing.
-      this.log(chalk.gray("Calling OpenAI image generate endpoint..."));
+      // Generate mask (semantic guidance for the model; sharp enforces the
+      // strict zone boundary via compositing after the API call)
+      this.log(chalk.gray("Generating mask..."));
+      const maskBuffer = await generateMask(positions, flags.zone);
+
+      // gpt-image-1.5 supports /images/edits with mask for semantic guidance.
+      // GPT image models always return b64_json — response_format not needed.
+      this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
       const client = await this.getClient(apiKeyOverride);
 
-      const response = await client.images.generate({
+      const imageFile = await toFile(imageBuffer, "image.png", {
+        type: "image/png",
+      });
+      const maskFile = await toFile(maskBuffer, "mask.png", {
+        type: "image/png",
+      });
+
+      const response = await client.images.edit({
         model: "gpt-image-1.5",
+        image: imageFile,
+        mask: maskFile,
         prompt: flags.prompt,
         size: "1024x1024",
+        quality: flags.quality as "low" | "medium" | "high",
         n: 1,
       });
 
