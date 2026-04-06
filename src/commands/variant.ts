@@ -49,9 +49,9 @@ export default class VariantCommand extends Command {
     model: Flags.string({
       char: "m",
       description:
-        'Edit model: "dall-e-2" (strict inpainting, default) or "gpt-image-1" (soft guidance, may modify outside zone)',
+        'Edit model: "dall-e-2" (strict inpainting, default), "gpt-image-1", or "gpt-image-1.5" (soft guidance, may modify outside zone)',
       default: "dall-e-2",
-      options: ["dall-e-2", "gpt-image-1"],
+      options: ["dall-e-2", "gpt-image-1", "gpt-image-1.5"],
     }),
     zone: Flags.integer({
       char: "z",
