@@ -1,4 +1,4 @@
-import { Command, Flags } from "@oclif/core";
+import { Args, Command, Flags } from "@oclif/core";
 import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
@@ -35,20 +35,22 @@ export default class EditCommand extends Command {
   static description =
     "Edit an existing icon with AI. Optionally restrict edits to specific zones (e.g. t30, tl15br15).";
 
-  static examples = [
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --prompt "make it look futuristic"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone t30 --prompt "add a red notification badge"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone t30r10 --prompt "add sparkles in corners"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone tl15 --zone br15 --prompt "add stars in both corners"',
-    '<%= config.bin %> <%= command.id %> --base ./icon.png --zone c40 --prompt "add a play button" --prompt-only',
-  ];
-
-  static flags = {
-    base: Flags.string({
-      char: "B",
+  static args = {
+    base: Args.string({
       description: "Path to the base icon PNG",
       required: true,
     }),
+  };
+
+  static examples = [
+    '<%= config.bin %> <%= command.id %> ./icon.png --prompt "make it look futuristic"',
+    '<%= config.bin %> <%= command.id %> ./icon.png --zone t30 --prompt "add a red notification badge"',
+    '<%= config.bin %> <%= command.id %> ./icon.png --zone t30r10 --prompt "add sparkles in corners"',
+    '<%= config.bin %> <%= command.id %> ./icon.png --zone tl15 --zone br15 --prompt "add stars in both corners"',
+    '<%= config.bin %> <%= command.id %> ./icon.png --zone c40 --prompt "add a play button" --prompt-only',
+  ];
+
+  static flags = {
     zone: Flags.string({
       char: "z",
       description:
@@ -106,7 +108,7 @@ export default class EditCommand extends Command {
   }
 
   public async run(): Promise<void> {
-    const { flags } = await this.parse(EditCommand);
+    const { args, flags } = await this.parse(EditCommand);
 
     try {
       const promptError = ValidationService.validatePrompt(flags.prompt);
@@ -115,8 +117,8 @@ export default class EditCommand extends Command {
       const outputError = ValidationService.validateOutputPath(flags.output);
       if (outputError) this.error(outputError);
 
-      if (!fs.existsSync(flags.base)) {
-        this.error(chalk.red(`Base image not found: ${flags.base}`));
+      if (!fs.existsSync(args.base)) {
+        this.error(chalk.red(`Base image not found: ${args.base}`));
       }
 
       const apiKeyOverride = flags["openai-api-key"];
@@ -133,7 +135,7 @@ export default class EditCommand extends Command {
       if (flags["prompt-only"]) {
         this.log(chalk.blue("🔎 Prompt preview (no generation)"));
         this.log("");
-        this.log(chalk.gray(`Base: ${flags.base}`));
+        this.log(chalk.gray(`Base: ${args.base}`));
         this.log(chalk.gray(`Zone(s): ${zones.length ? zoneLabel : "whole image (no mask)"}`));
         this.log(chalk.gray(`Model: ${flags.model}`));
         this.log(chalk.gray(`Quality: ${flags.quality}`));
@@ -144,14 +146,14 @@ export default class EditCommand extends Command {
 
       this.log(chalk.blue("🎨 Generating icon variant..."));
       this.log("");
-      this.log(chalk.gray(`Base: ${flags.base}`));
+      this.log(chalk.gray(`Base: ${args.base}`));
       this.log(chalk.gray(`Zone(s): ${zones.length ? zoneLabel : "whole image (no mask)"}`));
       this.log(chalk.gray(`Model: ${flags.model}`));
       this.log(chalk.gray(`Quality: ${flags.quality}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
       this.log(chalk.gray("Normalizing base image to 1024×1024 RGBA..."));
-      const imageBuffer = await sharp(flags.base)
+      const imageBuffer = await sharp(args.base)
         .resize(1024, 1024)
         .ensureAlpha()
         .png()
