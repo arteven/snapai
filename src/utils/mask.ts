@@ -43,6 +43,18 @@ function zoneRect(
 }
 
 /**
+ * Returns the zone rectangles for given positions and zone percentage.
+ * Useful for compositing operations that need to know which pixel regions to copy.
+ */
+export function getZoneRects(
+  positions: Position[],
+  zonePercent = 30
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const zone = Math.round(SIZE * Math.max(1, Math.min(100, zonePercent)) / 100);
+  return positions.map((pos) => zoneRect(pos, zone));
+}
+
+/**
  * Generates a 1024×1024 RGBA PNG mask.
  * Transparent pixels (alpha=0) mark editable zones.
  * Black opaque pixels (alpha=255) mark preserved areas.

@@ -6,7 +6,7 @@ import sharp from "sharp";
 import OpenAI, { toFile } from "openai";
 import { ConfigService } from "../services/config.js";
 import { ValidationService } from "../utils/validation.js";
-import { generateMask, VALID_POSITIONS, Position } from "../utils/mask.js";
+import { getZoneRects, VALID_POSITIONS, Position } from "../utils/mask.js";
 
 export default class VariantCommand extends Command {
   static description =
@@ -145,29 +145,21 @@ export default class VariantCommand extends Command {
         .png()
         .toBuffer();
 
-      // Generate mask
-      this.log(chalk.gray("Generating mask..."));
-      const maskBuffer = await generateMask(positions, flags.zone);
-
-      // Call OpenAI image edit
+      // Call OpenAI image edit (gpt-image-1 accepts the endpoint but doesn't
+      // do strict inpainting — zone enforcement is applied locally via sharp)
       this.log(chalk.gray("Calling OpenAI image edit endpoint..."));
       const client = await this.getClient(apiKeyOverride);
 
       const imageFile = await toFile(imageBuffer, "image.png", {
         type: "image/png",
       });
-      const maskFile = await toFile(maskBuffer, "mask.png", {
-        type: "image/png",
-      });
 
       const response = await client.images.edit({
-        model: "dall-e-2",
+        model: "gpt-image-1",
         image: imageFile,
-        mask: maskFile,
         prompt: flags.prompt,
         size: "1024x1024",
         n: 1,
-        response_format: "b64_json",
       });
 
       if (!response.data || response.data.length === 0) {
@@ -179,13 +171,30 @@ export default class VariantCommand extends Command {
         throw new Error("No base64 data returned from OpenAI");
       }
 
+      // Composite: extract each zone from the model's output and paste it
+      // onto the original image — pixels outside the zone stay pixel-exact.
+      this.log(chalk.gray("Applying zone constraint..."));
+      const generatedBuffer = Buffer.from(b64, "base64");
+      const rects = getZoneRects(positions, flags.zone);
+
+      let resultBuffer = imageBuffer;
+      for (const { x, y, w, h } of rects) {
+        const zoneExtract = await sharp(generatedBuffer)
+          .extract({ left: x, top: y, width: w, height: h })
+          .toBuffer();
+        resultBuffer = await sharp(resultBuffer)
+          .composite([{ input: zoneExtract, left: x, top: y }])
+          .png()
+          .toBuffer();
+      }
+
       // Save output
       await fs.ensureDir(flags.output);
       const posLabel = positions.join("_");
       const timestamp = Date.now();
       const filename = `variant_${posLabel}_${timestamp}.png`;
       const outputPath = path.join(flags.output, filename);
-      await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
+      await fs.writeFile(outputPath, resultBuffer);
 
       this.log(chalk.green("✅ Variant generated successfully!"));
       this.log(chalk.gray(`Saved to: ${outputPath}`));
