@@ -6,12 +6,7 @@ import sharp from "sharp";
 import OpenAI, { toFile } from "openai";
 import { ConfigService } from "../services/config.js";
 import { ValidationService } from "../utils/validation.js";
-import {
-  generateMask,
-  getZoneRects,
-  VALID_POSITIONS,
-  Position,
-} from "../utils/mask.js";
+import { generateMask, VALID_POSITIONS, Position } from "../utils/mask.js";
 
 export default class VariantCommand extends Command {
   static description =
@@ -198,30 +193,13 @@ export default class VariantCommand extends Command {
         throw new Error("No base64 data returned from OpenAI");
       }
 
-      // Composite: extract each zone from the model's output and paste it
-      // onto the original image — pixels outside the zone stay pixel-exact.
-      this.log(chalk.gray("Applying zone constraint..."));
-      const generatedBuffer = Buffer.from(b64, "base64");
-      const rects = getZoneRects(positions, flags.zone);
-
-      let resultBuffer = imageBuffer;
-      for (const { x, y, w, h } of rects) {
-        const zoneExtract = await sharp(generatedBuffer)
-          .extract({ left: x, top: y, width: w, height: h })
-          .toBuffer();
-        resultBuffer = await sharp(resultBuffer)
-          .composite([{ input: zoneExtract, left: x, top: y }])
-          .png()
-          .toBuffer();
-      }
-
       // Save output
       await fs.ensureDir(flags.output);
       const posLabel = positions.join("_");
       const timestamp = Date.now();
       const filename = `variant_${posLabel}_${timestamp}.png`;
       const outputPath = path.join(flags.output, filename);
-      await fs.writeFile(outputPath, resultBuffer);
+      await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
 
       this.log(chalk.green("✅ Variant generated successfully!"));
       this.log(chalk.gray(`Saved to: ${outputPath}`));
