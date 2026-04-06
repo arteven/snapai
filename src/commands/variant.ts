@@ -46,13 +46,6 @@ export default class VariantCommand extends Command {
       description:
         "OpenAI API key override (does not persist to disk). Also supports SNAPAI_API_KEY / OPENAI_API_KEY",
     }),
-    model: Flags.string({
-      char: "m",
-      description:
-        'Edit model: "dall-e-2" (strict inpainting, default), "gpt-image-1", or "gpt-image-1.5" (soft guidance, may modify outside zone)',
-      default: "dall-e-2",
-      options: ["dall-e-2", "gpt-image-1", "gpt-image-1.5"],
-    }),
     zone: Flags.integer({
       char: "z",
       description: "Editable zone size as % of canvas (1–100, default 30)",
@@ -132,7 +125,6 @@ export default class VariantCommand extends Command {
         this.log(chalk.gray(`Base: ${flags.base}`));
         this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
         this.log(chalk.gray(`Zone: ${flags.zone}% (~${Math.round(1024 * flags.zone / 100)}px)`));
-        this.log(chalk.gray(`Model: ${flags.model}`));
         this.log(chalk.gray(`Prompt: ${flags.prompt}`));
         this.log(chalk.gray(`Output directory: ${flags.output}`));
         return;
@@ -143,7 +135,6 @@ export default class VariantCommand extends Command {
       this.log(chalk.gray(`Base: ${flags.base}`));
       this.log(chalk.gray(`Position(s): ${positions.join(", ")}`));
       this.log(chalk.gray(`Zone: ${flags.zone}%`));
-      this.log(chalk.gray(`Model: ${flags.model}`));
       this.log(chalk.gray(`Prompt: ${flags.prompt}`));
 
       // Normalize base image to 1024×1024 RGBA PNG
@@ -170,7 +161,7 @@ export default class VariantCommand extends Command {
       });
 
       const response = await client.images.edit({
-        model: flags.model,
+        model: "dall-e-2",
         image: imageFile,
         mask: maskFile,
         prompt: flags.prompt,
