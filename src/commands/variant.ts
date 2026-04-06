@@ -151,13 +151,18 @@ export default class VariantCommand extends Command {
         type: "image/png",
       });
 
+      // dall-e-2 is used here because it performs strict inpainting:
+      // only the transparent (alpha=0) zone in the mask is touched;
+      // all opaque pixels are preserved exactly. gpt-image-1 treats
+      // the mask as soft guidance and may regenerate the full image.
       const response = await client.images.edit({
-        model: "gpt-image-1",
+        model: "dall-e-2",
         image: imageFile,
         mask: maskFile,
         prompt: flags.prompt,
         size: "1024x1024",
         n: 1,
+        response_format: "b64_json",
       });
 
       if (!response.data || response.data.length === 0) {
